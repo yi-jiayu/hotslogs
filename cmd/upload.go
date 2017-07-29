@@ -35,11 +35,15 @@ import (
 	"github.com/yi-jiayu/hotslogs/hotslogs"
 )
 
+var (
+	dryRun bool
+)
+
 // uploadCmd represents the upload command
 var uploadCmd = &cobra.Command{
-	Use:   "upload",
+	Use:     "upload",
 	Aliases: []string{"up"},
-	Short: "Upload new replays",
+	Short:   "Upload new replays",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
 
@@ -52,16 +56,11 @@ to quickly create a Cobra application.`,
 			log.Fatal("err: replay dir not set")
 		}
 
-		lastUploadTime := viper.GetString("lastUploadTime")
+		lastUploadTime := viper.GetTime("lastUploadTime")
 		fmt.Printf("Looking for new replays since: %s\n", lastUploadTime)
 
-		since, err := time.Parse(time.RFC3339, lastUploadTime)
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		now := time.Now()
-		newReplays, err := hotslogs.ListNewReplays(replayDir, since)
+		newReplays, err := hotslogs.ListNewReplays(replayDir, lastUploadTime)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -83,29 +82,35 @@ to quickly create a Cobra application.`,
 
 		for _, replay := range newReplays {
 			fmt.Printf("  %s: ", replay.Name())
-			result, err := hotslogs.UploadReplay(uploader, path.Join(replayDir, replay.Name()))
-			if err != nil {
-				fmt.Printf("ERROR (%s)\n", err)
+			if !dryRun {
+				result, err := hotslogs.UploadReplay(uploader, path.Join(replayDir, replay.Name()))
+				if err != nil {
+					fmt.Printf("ERROR (%s)\n", err)
+				} else {
+					fmt.Printf("DONE (%s)\n", result)
+				}
 			} else {
-				fmt.Printf("OK (%s)\n", result)
+				fmt.Println("SKIPPED (Dry run)")
 			}
 		}
 
-		// update config file
-		fmt.Print("Updating config file... ")
+		if !dryRun {
+			// update config file
+			fmt.Print("Updating config file... ")
 
-		config := fmt.Sprintf("replayDir: %s\nlastUploadTime: %s\n", replayDir, now.Format(time.RFC3339))
-		file, err := os.OpenFile(viper.ConfigFileUsed(), os.O_WRONLY|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatal(err)
+			config := fmt.Sprintf("replayDir: %s\nlastUploadTime: %s\n", replayDir, now.Format(time.RFC3339))
+			file, err := os.OpenFile(viper.ConfigFileUsed(), os.O_TRUNC|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			_, err = file.WriteString(config)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println("Done.")
 		}
-
-		_, err = file.WriteString(config)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println("Done.")
 	},
 }
 
@@ -121,4 +126,5 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// uploadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	uploadCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run")
 }
