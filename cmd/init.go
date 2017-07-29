@@ -47,6 +47,14 @@ to quickly create a Cobra application.`,
 		reader := bufio.NewReader(os.Stdin)
 		configFile := viper.ConfigFileUsed()
 
+		if configFile == "" {
+			home, err := homedir.Dir()
+			if err != nil {
+				panic(err)
+			}
+			configFile = filepath.Join(home, ".hotslogs.yaml")
+		}
+
 		if fi, err := os.Stat(configFile); !os.IsNotExist(err) {
 			if fi.IsDir() {
 				fmt.Fprintf(os.Stderr, "error: %s is a directory.", configFile)
