@@ -110,6 +110,8 @@ to quickly create a Cobra application.`,
 			}
 
 			fmt.Println("Done.")
+		} else {
+			fmt.Println("Dry run complete.")
 		}
 	},
 }
