@@ -37,6 +37,10 @@ func ListNewReplays(replayDir string, since time.Time) ([]os.FileInfo, error) {
 
 	newReplays := make([]os.FileInfo, 0)
 	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
 		if file.ModTime().After(since) {
 			newReplays = append(newReplays, file)
 		}
