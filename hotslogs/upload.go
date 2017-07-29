@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -118,8 +118,8 @@ func UploadNewReplays(replayDir string, since time.Time) (map[string]int, error)
 
 	paths := make([]string, 0)
 	for _, replay := range newReplays {
-		p := path.Join(replayDir, replay.Name())
-		paths = append(paths, p)
+		path := filepath.Join(replayDir, replay.Name())
+		paths = append(paths, path)
 	}
 
 	sess := session.Must(session.NewSession(&aws.Config{
