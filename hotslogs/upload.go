@@ -1,52 +1,108 @@
 package hotslogs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/mitchellh/go-homedir"
 	"github.com/satori/go.uuid"
 )
 
 const (
-	AccessKeyID     = "AKIAIESBHEUH4KAAG4UA"
-	SecretAccessKey = "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"
+	accessKeyID     = "AKIAIESBHEUH4KAAG4UA"
+	secretAccessKey = "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"
 	S3BucketName    = "heroesreplays"
 	S3BucketRegion  = "us-west-2"
 
-	UploadEndpoint = "https://www.hotslogs.com/UploadFile?Source="
+	uploadEndpoint = "https://www.hotslogs.com/UploadFile?Source="
+)
+
+const (
+	windowsDefaultReplayLocationGlob = "Documents/Heroes of the Storm/Accounts/*/*-Hero-*/Replays/Multiplayer/*"
+	osxDefaultReplayLocationGlob     = "Library/Application Support/Blizzard/Heroes of the Storm/Accounts/########/#-Hero-#-######/Replays/Multiplayer/*"
 )
 
 var (
-	StaticCredentials = credentials.NewStaticCredentials(AccessKeyID, SecretAccessKey, "")
+	StaticCredentials = credentials.NewStaticCredentials(accessKeyID, secretAccessKey, "")
 )
 
-func ListNewReplays(replayDir string, since time.Time) ([]os.FileInfo, error) {
-	files, err := ioutil.ReadDir(replayDir)
+func listReplaysInDefaultLocation() ([]string, error) {
+	home, err := homedir.Dir()
 	if err != nil {
 		return nil, err
 	}
 
-	newReplays := make([]os.FileInfo, 0)
-	for _, file := range files {
-		if file.IsDir() {
+	var pattern string
+	switch runtime.GOOS {
+	case "windows":
+		pattern = filepath.Join(home, windowsDefaultReplayLocationGlob)
+	case "darwin":
+		pattern = filepath.Join(home, osxDefaultReplayLocationGlob)
+	default:
+		return nil, errors.New(fmt.Sprintf("os not supported (%s)", runtime.GOOS))
+	}
+
+	return filepath.Glob(pattern)
+}
+
+func listNewReplaysInDefaultLocation(since time.Time) ([]string, error) {
+	replays, err := listReplaysInDefaultLocation()
+	if err != nil {
+		return nil, err
+	}
+
+	newReplays := make([]string, 0)
+	for _, replay := range replays {
+		fi, err := os.Stat(replay)
+		if err != nil {
 			continue
 		}
 
-		if file.ModTime().After(since) {
-			newReplays = append(newReplays, file)
+		if fi.IsDir() {
+			continue
+		}
+
+		if fi.ModTime().After(since) {
+			newReplays = append(newReplays, replay)
 		}
 	}
 
 	return newReplays, nil
+}
+
+func ListNewReplays(replayDir string, since time.Time) ([]string, error) {
+	if replayDir == "" {
+		return listNewReplaysInDefaultLocation(since)
+	} else {
+		files, err := ioutil.ReadDir(replayDir)
+		if err != nil {
+			return nil, err
+		}
+
+		newReplays := make([]string, 0)
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+
+			if file.ModTime().After(since) {
+				newReplays = append(newReplays, filepath.Join(replayDir, file.Name()))
+			}
+		}
+
+		return newReplays, nil
+	}
 }
 
 func UploadReplayToS3(uploader *s3manager.Uploader, key string, file io.Reader) error {
@@ -61,7 +117,7 @@ func UploadReplayToS3(uploader *s3manager.Uploader, key string, file io.Reader) 
 }
 
 func GetUploadResult(key string) (string, error) {
-	URL := UploadEndpoint + "&FileName=" + key
+	URL := uploadEndpoint + "&FileName=" + key
 	resp, err := http.Get(URL)
 	if err != nil {
 		return "", err
@@ -118,7 +174,7 @@ func UploadNewReplays(replayDir string, since time.Time) (map[string]int, error)
 
 	paths := make([]string, 0)
 	for _, replay := range newReplays {
-		path := filepath.Join(replayDir, replay.Name())
+		path := filepath.Join(replayDir, replay)
 		paths = append(paths, path)
 	}
 

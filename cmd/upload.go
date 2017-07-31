@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -52,9 +52,6 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		replayDir := viper.GetString("replayDir")
-		if replayDir == "" {
-			log.Fatal("err: replay dir not set")
-		}
 
 		lastUploadTime := viper.GetTime("lastUploadTime")
 		fmt.Printf("Looking for new replays since: %s\n", lastUploadTime)
@@ -69,7 +66,7 @@ to quickly create a Cobra application.`,
 			fmt.Println("No new replays since last upload, exiting.")
 			os.Exit(0)
 		} else {
-			fmt.Printf("Found %d new replays since last upload.\n", len(newReplays))
+			fmt.Printf("Found %d new replay(s) since last upload.\n", len(newReplays))
 		}
 
 		fmt.Println("Uploading new replays...")
@@ -81,9 +78,9 @@ to quickly create a Cobra application.`,
 		uploader := s3manager.NewUploader(sess)
 
 		for _, replay := range newReplays {
-			fmt.Printf("  %s: ", replay.Name())
+			fmt.Printf("  %s: ", filepath.Base(replay))
 			if !dryRun {
-				result, err := hotslogs.UploadReplay(uploader, path.Join(replayDir, replay.Name()))
+				result, err := hotslogs.UploadReplay(uploader, replay)
 				if err != nil {
 					fmt.Printf("ERROR (%s)\n", err)
 				} else {
@@ -98,15 +95,20 @@ to quickly create a Cobra application.`,
 			// update config file
 			fmt.Print("Updating config file... ")
 
-			config := fmt.Sprintf("replayDir: %s\nlastUploadTime: %s\n", replayDir, now.Format(time.RFC3339))
+			var config string
+			if replayDir != "" {
+				config += "replayDir: " + replayDir + "\n"
+			}
+			config += "lastUploadTime: " + now.Format(time.RFC3339) + "\n"
+
 			file, err := os.OpenFile(viper.ConfigFileUsed(), os.O_TRUNC|os.O_CREATE, 0666)
 			if err != nil {
-				log.Fatal(err)
+				panic(err)
 			}
 
 			_, err = file.WriteString(config)
 			if err != nil {
-				log.Fatal(err)
+				panic(err)
 			}
 
 			fmt.Println("Done.")

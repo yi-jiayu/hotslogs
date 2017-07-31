@@ -25,8 +25,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"time"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
@@ -74,89 +74,81 @@ to quickly create a Cobra application.`,
 			}
 		}
 
-		replayDirGuess := GuessReplayDir()
-		if len(replayDirGuess) > 0 {
-			fmt.Printf("Replay directory: (%s) ", replayDirGuess[0])
-		} else {
-			fmt.Printf("Replay directory: ")
+		fmt.Print("Replay directory: (leave blank to use default location) ")
+
+		replayDir, err := reader.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		replayDir = strings.TrimSpace(replayDir)
+
+		if replayDir != "" {
+
+			if fi, err := os.Stat(replayDir); !os.IsNotExist(err) {
+				if !fi.IsDir() {
+					fmt.Fprintf(os.Stderr, "error: %s exists but is not a directory.", replayDir)
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "error: %s does not exist.", replayDir)
+				os.Exit(1)
+			}
+
 		}
 
-		var replayDir string
+		var lastUploadTime string
+		fmt.Printf("Use current time as last upload time? (y/N) ")
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			panic(err)
 		}
 		input = strings.TrimSpace(input)
 
-		if input == "" && replayDirGuess[0] != "" {
-			replayDir = replayDirGuess[0]
-		} else {
-			replayDir = input
+		if input == "y" || input == "Y" {
+			lastUploadTime = time.Now().Format(time.RFC3339)
 		}
 
-		if fi, err := os.Stat(replayDir); !os.IsNotExist(err) {
-			if !fi.IsDir() {
-				fmt.Fprintf(os.Stderr, "error: %s exists but is not a directory.", replayDir)
-				os.Exit(1)
+		if replayDir == "" && lastUploadTime == "" {
+			fmt.Println("No need to write anything to config file, exiting.")
+		} else {
+			var config string
+			switch {
+			case replayDir != "":
+				config += "replayDir: " + replayDir + "\n"
+				fallthrough
+			case lastUploadTime != "":
+				config += "lastUploadTime: " + lastUploadTime + "\n"
 			}
-		} else {
-			fmt.Fprintf(os.Stderr, "error: %s does not exist.", replayDir)
-			os.Exit(1)
+
+			fmt.Printf("About to write to %s:\n", configFile)
+			fmt.Printf("\"\n%s\"\n", config)
+
+			fmt.Print("Is this ok? (Y/n) ")
+			input, err = reader.ReadString('\n')
+			if err != nil {
+				panic(err)
+			}
+			replayDir = strings.TrimSpace(input)
+			if input == "y" || input == "Y" || input == "" {
+				fmt.Println("init aborted.")
+				os.Exit(0)
+			}
+
+			fmt.Printf("Initialising %s... ", configFile)
+
+			file, err := os.OpenFile(configFile, os.O_TRUNC|os.O_CREATE, 0666)
+			if err != nil {
+				panic(err)
+			}
+
+			_, err = file.WriteString(config)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Println("Done.")
 		}
-
-		fmt.Printf("About to write to %s:\n", configFile)
-
-		config := fmt.Sprintf("replayDir: %s\n", replayDir)
-		fmt.Printf("\"\n%s\"\n", config)
-
-		fmt.Print("Is this ok? (Y/n) ")
-		input, err = reader.ReadString('\n')
-		if err != nil {
-			panic(err)
-		}
-		input = strings.TrimSpace(input)
-		if input != "y" && input != "Y" && input != "" {
-			fmt.Println("init aborted.")
-			os.Exit(0)
-		}
-
-		fmt.Printf("Initialising %s... ", configFile)
-
-		file, err := os.OpenFile(configFile, os.O_TRUNC|os.O_CREATE, 0666)
-		if err != nil {
-			panic(err)
-		}
-
-		_, err = file.WriteString(config)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Done.")
 	},
-}
-
-func GuessReplayDir() []string {
-	home, err := homedir.Dir()
-	if err != nil {
-		return nil
-	}
-
-	switch runtime.GOOS {
-	case "windows":
-		glob := filepath.Join(home, "Documents/Heroes of the Storm/Accounts/*/*-Hero-*/Replays/Multiplayer")
-		matches, err := filepath.Glob(glob)
-		if err != nil {
-			return nil
-		}
-
-		return matches
-	case "darwin":
-		// todo: macos support
-		return nil
-	default:
-		return nil
-	}
 }
 
 func init() {

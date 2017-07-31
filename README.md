@@ -2,16 +2,18 @@
 Command line replay uploader for HOTS Logs
 
 ## Installation
-If you have a Go environment set up: `go get -u -v github.com/yi-jiayu/hotslogs` will add the `hotslogs` binary to `$GOPATH/bin`.
+If you have a Go environment set up: run `go get -u -v github.com/yi-jiayu/hotslogs` to add the `hotslogs` binary to `$GOPATH/bin`.
 
-Otherwise, check in the releases section for binary downloads and add to your `$PATH`.
+Otherwise, check [Releases](https://github.com/yi-jiayu/hotslogs/releases) for binaries.
 
 ## Setup
-Run `hotslogs config init` and set your replay directory, which may or may not be automatically detected.
+`hotslogs` will work out of the box if your replays are located in the default locations. 
 
 According to the HOTS Logs [upload page](https://www.hotslogs.com/Account/Upload), the default folder for replays is:
 - Windows: `$HOME\Documents\Heroes of the Storm\Accounts\########\#-Hero-#-######\Replays\`
 - Mac: `~/Library/Application Support/Blizzard/Heroes of the Storm/Accounts/########/#-Hero-#-######/Replays/`
+
+Otherwise, you can run `hotslogs config init` to set your replay directory.
 
 ## Usage
 Run `hotslogs update` to upload all new replays since the last time you ran the command.
