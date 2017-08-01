@@ -1,6 +1,9 @@
 # hotslogs
 Command line replay uploader for HOTS Logs
 
+## Background
+After finding uploading HOTS replays to HOTS Logs through the browser to be tedious, yet not wanting to use a graphical uploader, I decided to write a command line tool for doing so. Upload functionality based on [eivindveg/HotSUploader](https://github.com/eivindveg/HotSUploader).
+
 ## Installation
 If you have a Go environment set up: run `go get -u -v github.com/yi-jiayu/hotslogs` to add the `hotslogs` binary to `$GOPATH/bin`.
 
