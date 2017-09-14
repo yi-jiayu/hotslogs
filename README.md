@@ -35,5 +35,10 @@ Updating config file... Done.
 PS C:\Users\jiayu> 
 ```
 
+## Hots Api support
+`hotslogs upload` accepts the `--destinations` flag for choosing where to upload your replays to, which defaults to HOTS Logs. You can pass "hotsapi" to upload to Hots Api instead: `hotslogs up --destinations hotsapi`.
+
+If you want to upload all your previous replays to Hots Api, you can use the `--config` flag with a dummy config file to ignore the last upload time: `hotslogs --config no-such-file up --destinations hotsapi`.
+
 ## Roadmap
 - [ ] Calculate replay ID and check if a replay has already been uploaded before uploading it.
