@@ -27,16 +27,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/yi-jiayu/hotslogs/hotslogs"
+	"github.com/yi-jiayu/hotslogs/replays"
+	"github.com/yi-jiayu/hotslogs/uploaders/hotsapi"
+	"github.com/yi-jiayu/hotslogs/uploaders/hotslogs"
 )
 
 var (
-	dryRun bool
+	dryRun       bool
+	destinations []string
 )
 
 // uploadCmd represents the upload command
@@ -57,7 +57,7 @@ to quickly create a Cobra application.`,
 		fmt.Printf("Looking for new replays since: %s\n", lastUploadTime)
 
 		now := time.Now()
-		newReplays, err := hotslogs.ListNewReplays(replayDir, lastUploadTime)
+		newReplays, err := replays.ListNewReplays(replayDir, lastUploadTime)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -71,23 +71,52 @@ to quickly create a Cobra application.`,
 
 		fmt.Println("Uploading new replays...")
 
-		sess := session.Must(session.NewSession(&aws.Config{
-			Credentials: hotslogs.StaticCredentials,
-			Region:      aws.String(hotslogs.S3BucketRegion),
-		}))
-		uploader := s3manager.NewUploader(sess)
+		if destinations == nil {
+			destinations = []string{"hotslogs"}
+		}
 
-		for _, replay := range newReplays {
-			fmt.Printf("  %s: ", filepath.Base(replay))
-			if !dryRun {
-				result, err := hotslogs.UploadReplay(uploader, replay)
-				if err != nil {
-					fmt.Printf("ERROR (%s)\n", err)
-				} else {
-					fmt.Printf("DONE (%s)\n", result)
+		for _, dest := range destinations {
+			switch dest {
+			case "hotslogs":
+				fmt.Println("Uploading replays to HOTS Logs...")
+				uploader := hotslogs.NewUploader()
+
+				for _, replay := range newReplays {
+					fmt.Printf("  %s: ", filepath.Base(replay))
+					if !dryRun {
+						result, err := uploader.UploadReplay(replay)
+						if err != nil {
+							fmt.Printf("ERROR (%s)\n", err)
+						} else {
+							fmt.Printf("DONE (%s)\n", result)
+						}
+					} else {
+						fmt.Println("SKIPPED (Dry run)")
+					}
 				}
-			} else {
-				fmt.Println("SKIPPED (Dry run)")
+
+				fmt.Println("Finished uploading replays to HOTS Logs.")
+			case "hotsapi":
+				fmt.Println("Uploading replays to Hots Api...")
+				uploader := hotsapi.NewUploader()
+
+				for _, replay := range newReplays {
+					fmt.Printf("  %s: ", filepath.Base(replay))
+					if !dryRun {
+						result, err := uploader.UploadReplay(replay)
+						if err != nil {
+							fmt.Printf("ERROR (%s)\n", err)
+						} else {
+							fmt.Printf("DONE (%s)\n", result)
+						}
+					} else {
+						fmt.Println("SKIPPED (Dry run)")
+					}
+				}
+
+				fmt.Println("Finished uploading replays to Hots Api.")
+			default:
+				fmt.Printf("ERROR: destination '%s' not recognised.", dest)
 			}
 		}
 
@@ -131,4 +160,5 @@ func init() {
 	// is called directly, e.g.:
 	// uploadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	uploadCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run")
+	uploadCmd.Flags().StringArrayVar(&destinations, "destinations", nil, "Where to upload replays to")
 }

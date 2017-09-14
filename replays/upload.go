@@ -1,4 +1,4 @@
-package hotslogs
+package replays
 
 import (
 	"errors"
@@ -153,17 +153,17 @@ func UploadReplay(uploader *s3manager.Uploader, path string) (string, error) {
 func UploadReplays(uploader *s3manager.Uploader, paths []string) ([]string, []error) {
 	// todo: parallelise
 	results := make([]string, len(paths))
-	errors := make([]error, len(paths))
+	errs := make([]error, len(paths))
 	for i, path := range paths {
 		result, err := UploadReplay(uploader, path)
 		if err != nil {
-			errors[i] = err
+			errs[i] = err
 		} else {
 			results[i] = result
 		}
 	}
 
-	return results, errors
+	return results, errs
 }
 
 func UploadNewReplays(replayDir string, since time.Time) (map[string]int, error) {
@@ -185,8 +185,8 @@ func UploadNewReplays(replayDir string, since time.Time) (map[string]int, error)
 	uploader := s3manager.NewUploader(sess)
 
 	resultsMap := make(map[string]int)
-	results, errors := UploadReplays(uploader, paths)
-	for i, err := range errors {
+	results, errs := UploadReplays(uploader, paths)
+	for i, err := range errs {
 		if err != nil {
 			if _, exists := resultsMap[err.Error()]; exists {
 				resultsMap[err.Error()]++
