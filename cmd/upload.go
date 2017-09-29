@@ -128,7 +128,7 @@ func UploadToHOTSLogs(db *bolt.DB, replays []string) {
 
 	uploader := hotslogs.NewUploader()
 
-	for i, replay := range replays {
+	for i, replay := range newReplays {
 		err := db.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte("hotslogs"))
 			if err != nil {
