@@ -87,18 +87,3 @@ func (u *Uploader) UploadReplay(replay string) (string, error) {
 	result, err := u.getUploadResult(key)
 	return result, err
 }
-
-func (u *Uploader) UploadReplays(replays []string) ([]string, []error) {
-	results := make([]string, len(replays))
-	errs := make([]error, len(replays))
-	for i, path := range replays {
-		result, err := u.UploadReplay(path)
-		if err != nil {
-			errs[i] = err
-		} else {
-			results[i] = result
-		}
-	}
-
-	return results, errs
-}

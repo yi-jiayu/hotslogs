@@ -8,6 +8,12 @@
   version = "v1.10.18"
 
 [[projects]]
+  name = "github.com/boltdb/bolt"
+  packages = ["."]
+  revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
+  version = "v1.3.1"
+
+[[projects]]
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
   revision = "629574ca2a5df945712d3079857300b5e4da0236"
@@ -77,7 +83,7 @@
   branch = "master"
   name = "github.com/spf13/afero"
   packages = [".","mem"]
-  revision = "9be650865eab0c12963d8753212f4f9c66cdcf12"
+  revision = "ee1bd8ee15a1306d1f9201acc41ef39cd9f99a1b"
 
 [[projects]]
   name = "github.com/spf13/cast"
@@ -130,6 +136,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "83a098066c2132f91d5cd0ceac937c4b73ea60f0500b73faa4deda63dc639ec0"
+  inputs-digest = "4e68b5b21c8bd8182834fd761d6a35bfd267a3a87bb84783859b7ba58ed32a2c"
   solver-name = "gps-cdcl"
   solver-version = 1

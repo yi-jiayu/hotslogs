@@ -22,22 +22,20 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/boltdb/bolt"
+	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/yi-jiayu/hotslogs/hotsapi"
+	"github.com/yi-jiayu/hotslogs/hotslogs"
 	"github.com/yi-jiayu/hotslogs/replays"
-	"github.com/yi-jiayu/hotslogs/uploaders/hotsapi"
-	"github.com/yi-jiayu/hotslogs/uploaders/hotslogs"
 )
 
-var (
-	dryRun       bool
-	destinations []string
-)
+const TimeFormat = "15:04"
 
 // uploadCmd represents the upload command
 var uploadCmd = &cobra.Command{
@@ -51,114 +49,159 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		replayDir := viper.GetString("replayDir")
-
-		lastUploadTime := viper.GetTime("lastUploadTime")
-		fmt.Printf("Looking for new replays since: %s\n", lastUploadTime)
-
-		now := time.Now()
-		newReplays, err := replays.ListNewReplays(replayDir, lastUploadTime)
+		// check if $HOME/.hotslogs folder exists
+		home, err := homedir.Dir()
 		if err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 
-		if len(newReplays) == 0 {
-			fmt.Println("No new replays since last upload, exiting.")
-			os.Exit(0)
+		datadir := filepath.Join(home, ".hotslogs")
+		fi, err := os.Stat(datadir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				panic(err)
+			}
+
+			os.Mkdir(datadir, 0600)
 		} else {
-			fmt.Printf("Found %d new replay(s) since last upload.\n", len(newReplays))
+			if !fi.IsDir() {
+				panic("Oh no, $HOME/.hotslogs already exists but is not a directory.")
+			}
 		}
 
-		fmt.Println("Uploading new replays...")
-
-		if destinations == nil {
-			destinations = []string{"hotslogs"}
+		db, err := bolt.Open(filepath.Join(datadir, "data"), 0600, nil)
+		if err != nil {
+			panic(err)
 		}
 
+		destinations := viper.GetStringSlice("destinations")
+		replays_, err := replays.List()
 		for _, dest := range destinations {
 			switch dest {
 			case "hotslogs":
-				fmt.Println("Uploading replays to HOTS Logs...")
-				uploader := hotslogs.NewUploader()
-
-				for _, replay := range newReplays {
-					fmt.Printf("  %s: ", filepath.Base(replay))
-					if !dryRun {
-						result, err := uploader.UploadReplay(replay)
-						if err != nil {
-							fmt.Printf("ERROR (%s)\n", err)
-						} else {
-							fmt.Printf("DONE (%s)\n", result)
-						}
-					} else {
-						fmt.Println("SKIPPED (Dry run)")
-					}
-				}
-
-				fmt.Println("Finished uploading replays to HOTS Logs.")
+				UploadToHOTSLogs(db, replays_)
 			case "hotsapi":
-				fmt.Println("Uploading replays to Hots Api...")
-				uploader := hotsapi.NewUploader()
-
-				for _, replay := range newReplays {
-					fmt.Printf("  %s: ", filepath.Base(replay))
-					if !dryRun {
-						result, err := uploader.UploadReplay(replay)
-						if err != nil {
-							fmt.Printf("ERROR (%s)\n", err)
-						} else {
-							fmt.Printf("DONE (%s)\n", result)
-						}
-					} else {
-						fmt.Println("SKIPPED (Dry run)")
-					}
-				}
-
-				fmt.Println("Finished uploading replays to Hots Api.")
+				UploadToHotSAPI(db, replays_)
 			default:
-				fmt.Printf("ERROR: destination '%s' not recognised.", dest)
+				fmt.Printf("Oh no, invalid upload destination: %s. Skipping...", dest)
 			}
-		}
-
-		if !dryRun {
-			// update config file
-			fmt.Print("Updating config file... ")
-
-			var config string
-			if replayDir != "" {
-				config += "replayDir: " + replayDir + "\n"
-			}
-			config += "lastUploadTime: " + now.Format(time.RFC3339) + "\n"
-
-			file, err := os.OpenFile(viper.ConfigFileUsed(), os.O_TRUNC|os.O_CREATE, 0666)
-			if err != nil {
-				panic(err)
-			}
-
-			_, err = file.WriteString(config)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("Done.")
-		} else {
-			fmt.Println("Dry run complete.")
 		}
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(uploadCmd)
+}
 
-	// Here you will define your flags and configuration settings.
+func FilterUploadedReplays(db *bolt.DB, bucket string, replays []string) []string {
+	newReplays := make([]string, 0)
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			newReplays = replays
+			return nil
+		}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// uploadCmd.PersistentFlags().String("foo", "", "A help for foo")
+		for _, replay := range replays {
+			if b.Get([]byte(replay)) == nil {
+				newReplays = append(newReplays, replay)
+			}
+		}
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// uploadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	uploadCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run")
-	uploadCmd.Flags().StringArrayVar(&destinations, "destinations", nil, "Where to upload replays to")
+		return nil
+	})
+
+	return newReplays
+}
+
+func UploadToHOTSLogs(db *bolt.DB, replays []string) {
+	fmt.Printf("[%s] Starting upload to HOTS Logs\n", time.Now().Format(TimeFormat))
+
+	newReplays := FilterUploadedReplays(db, "hotslogs", replays)
+	if len(newReplays) == 0 {
+		fmt.Println("No new replays, nothing to upload.")
+		fmt.Printf("[%s] Finished upload to HOTS Logs\n", time.Now().Format(TimeFormat))
+		return
+	} else {
+		fmt.Printf("Found %d new replays.\n", len(newReplays))
+	}
+
+	uploader := hotslogs.NewUploader()
+
+	for i, replay := range replays {
+		err := db.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte("hotslogs"))
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("(%d of %d) Uploading %s...", i, len(newReplays), filepath.Base(replay))
+
+			result, err := uploader.UploadReplay(replay)
+			if err != nil {
+				fmt.Printf(`\rerror uploading "%s": %v\n`, replay, err)
+				return nil
+			}
+
+			fmt.Printf("\rUploaded %s (%s)\n", filepath.Base(replay), result)
+
+			err = b.Put([]byte(replay), []byte(result))
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+		if err != nil {
+			fmt.Printf("database error: %v\n", err)
+		}
+	}
+
+	fmt.Printf("[%s] Finished upload to HOTS Logs\n", time.Now().Format(TimeFormat))
+}
+
+func UploadToHotSAPI(db *bolt.DB, replays []string) {
+	fmt.Printf("[%s] Starting upload to HotS API\n", time.Now().Format(TimeFormat))
+
+	newReplays := FilterUploadedReplays(db, "hotsapi", replays)
+	if len(newReplays) == 0 {
+		fmt.Println("No new replays, nothing to upload.")
+		fmt.Printf("[%s] Finished upload to HotS API\n", time.Now().Format(TimeFormat))
+		return
+	} else {
+		fmt.Printf("Found %d new replays.\n", len(newReplays))
+	}
+
+	uploader := hotsapi.NewUploader()
+
+	for i, replay := range newReplays {
+		err := db.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte("hotsapi"))
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("(%d of %d) Uploading %s...", i, len(newReplays), filepath.Base(replay))
+
+			result, err := uploader.UploadReplay(replay)
+			if err != nil {
+				fmt.Printf(`\rerror uploading "%s": %v\n`, replay, err)
+				return nil
+			}
+
+			fmt.Printf("\rUploaded %s (%s)\n", filepath.Base(replay), result.Status)
+
+			err = b.Put([]byte(replay), []byte(result.Status))
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+		if err != nil {
+			fmt.Printf("database error: %v\n", err)
+		}
+	}
+
+	fmt.Printf("[%s] Finished upload to HotS API\n", time.Now().Format(TimeFormat))
 }

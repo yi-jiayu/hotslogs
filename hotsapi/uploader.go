@@ -11,18 +11,14 @@ import (
 )
 
 const (
-	endpoint = "http://hotsapi.net/api/v1/replays"
+	endpoint = "https://hotsapi.net/api/v1/replays"
 )
 
-var (
-	client = &http.Client{
-		Timeout: 15 * time.Second,
-	}
-)
+type Uploader struct {
+	Client *http.Client
+}
 
-type Uploader struct{}
-
-type UploadResult struct {
+type Response struct {
 	Success      bool   `json:"success"`
 	Status       string `json:"status"`
 	ID           int    `json:"id"`
@@ -32,10 +28,14 @@ type UploadResult struct {
 }
 
 func NewUploader() *Uploader {
-	return &Uploader{}
+	return &Uploader{
+		Client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
-func uploadReplay(path string) (result UploadResult, err error) {
+func (u *Uploader) uploadReplay(path string) (result Response, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return
@@ -59,7 +59,7 @@ func uploadReplay(path string) (result UploadResult, err error) {
 	req, err := http.NewRequest(http.MethodPost, endpoint, body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := client.Do(req)
+	resp, err := u.Client.Do(req)
 	if err != nil {
 		return
 	}
@@ -73,27 +73,11 @@ func uploadReplay(path string) (result UploadResult, err error) {
 	return
 }
 
-func (u *Uploader) UploadReplay(replay string) (result string, err error) {
-	res, err := uploadReplay(replay)
+func (u *Uploader) UploadReplay(replay string) (result Response, err error) {
+	res, err := u.uploadReplay(replay)
 	if err != nil {
 		return
 	}
 
-	return res.Status, nil
-}
-
-func (u *Uploader) UploadReplays(replays []string) ([]string, []error) {
-	results := make([]string, len(replays))
-	errs := make([]error, len(replays))
-
-	for i, path := range replays {
-		result, err := uploadReplay(path)
-		if err != nil {
-			errs[i] = err
-		} else {
-			results[i] = result.Status
-		}
-	}
-
-	return results, errs
+	return res, nil
 }
